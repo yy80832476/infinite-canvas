@@ -26,7 +26,10 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
         { label: "OpenAI", value: "openai" },
         { label: "Gemini", value: "gemini" },
     ];
-    const capabilityOptions: Array<{ label: string; value: ModelCapability }> = ["image", "video", "text", "audio"].map((value) => ({ label: t(`config.channelEditor.capabilities.${value}`), value: value as ModelCapability }));
+    // 只展示当前部署启用的能力，避免把模型标成不可用的视频/音频。
+    const capabilityOptions: Array<{ label: string; value: ModelCapability }> = (["image", "video", "text", "audio"] as ModelCapability[])
+        .filter((value) => (value === "video" ? PRODUCT_FEATURES.video : value === "audio" ? PRODUCT_FEATURES.audio : true))
+        .map((value) => ({ label: t(`config.channelEditor.capabilities.${value}`), value }));
 
     useEffect(() => {
         if (open && channel) setDraft(channel);
@@ -56,6 +59,53 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
         onSave({ ...draft, name: draft.name.trim() || t("config.channels.unnamed"), models: normalizeChannelModels(draft.models) });
         onClose();
     };
+
+    // 模型列表允许用户自行维护（新增 / 修改能力 / 删除），渠道地址与协议仍然锁定。
+    const modelsSection = (
+        <>
+            <div className="mt-6 mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <div className="text-sm font-semibold">{t("config.channelEditor.models")}</div>
+                    <div className="mt-0.5 text-xs text-stone-500">{t("config.channelEditor.modelDescription", { count: draft.models.length })}</div>
+                </div>
+                <Button type="primary" icon={<ListPlus className="size-4" />} onClick={() => setSelectOpen(true)}>
+                    {t("config.channelEditor.selectModels")}
+                </Button>
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-stone-200 p-2 dark:border-stone-800">
+                {draft.models.length ? (
+                    draft.models.map((model) => (
+                        <div key={model.name} className="flex flex-wrap items-center gap-3 rounded-md px-2 py-1.5 hover:bg-stone-50 dark:hover:bg-stone-900/40">
+                            <span className="min-w-0 flex-1 truncate text-sm" title={model.name}>
+                                {model.name}
+                            </span>
+                            <div className="flex shrink-0 items-center gap-2">
+                                <Segmented size="small" value={model.capability} options={capabilityOptions} onChange={(value) => setCapability(model.name, value as ModelCapability)} />
+                                <Button size="small" type={model.script ? "primary" : "default"} ghost={Boolean(model.script)} onClick={() => setScriptTarget({ name: model.name, capability: model.capability, value: model.script || "" })}>
+                                    {t(model.script ? "config.channelEditor.scriptReady" : "config.channelEditor.script")}
+                                </Button>
+                                <Button size="small" danger type="text" icon={<Trash2 className="size-3.5" />} onClick={() => removeModel(model.name)} />
+                            </div>
+                        </div>
+                    ))
+                ) : (
+                    <div className="px-2 py-8 text-center text-sm text-stone-500">{t("config.channelEditor.empty")}</div>
+                )}
+            </div>
+
+            <ModelSelectModal open={selectOpen} channel={draft} selectedNames={draft.models.map((model) => model.name)} onConfirm={applySelection} onClose={() => setSelectOpen(false)} />
+
+            <ModelScriptEditor
+                open={Boolean(scriptTarget)}
+                capability={scriptTarget?.capability || "text"}
+                modelName={scriptTarget?.name || ""}
+                value={scriptTarget?.value || ""}
+                onSave={(script) => scriptTarget && setScript(scriptTarget.name, script)}
+                onClose={() => setScriptTarget(null)}
+            />
+        </>
+    );
 
     return (
         <Drawer
@@ -94,19 +144,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                         <span className="mb-1 block text-sm font-medium">API Key</span>
                         <Input.Password value={draft.apiKey} onChange={(event) => patch({ apiKey: event.target.value })} placeholder="sk-..." />
                     </label>
-                    <div>
-                        <div className="mb-2 text-sm font-semibold">{t("config.channelEditor.models")}</div>
-                        <div className="space-y-2 rounded-lg border border-stone-200 p-2 dark:border-stone-800">
-                            {draft.models.map((model) => (
-                                <div key={model.name} className="flex items-center justify-between gap-3 px-2 py-1.5">
-                                    <span className="min-w-0 truncate text-sm" title={model.name}>
-                                        {model.name}
-                                    </span>
-                                    <span className="shrink-0 text-xs text-stone-500">{t(`config.channelEditor.capabilities.${model.capability}`)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    {modelsSection}
                 </div>
             ) : (
                 <>
@@ -129,47 +167,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                         </label>
                     </div>
 
-                    <div className="mt-6 mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                            <div className="text-sm font-semibold">{t("config.channelEditor.models")}</div>
-                            <div className="mt-0.5 text-xs text-stone-500">{t("config.channelEditor.modelDescription", { count: draft.models.length })}</div>
-                        </div>
-                        <Button type="primary" icon={<ListPlus className="size-4" />} onClick={() => setSelectOpen(true)}>
-                            {t("config.channelEditor.selectModels")}
-                        </Button>
-                    </div>
-
-                    <div className="space-y-2 rounded-lg border border-stone-200 p-2 dark:border-stone-800">
-                        {draft.models.length ? (
-                            draft.models.map((model) => (
-                                <div key={model.name} className="flex flex-wrap items-center gap-3 rounded-md px-2 py-1.5 hover:bg-stone-50 dark:hover:bg-stone-900/40">
-                                    <span className="min-w-0 flex-1 truncate text-sm" title={model.name}>
-                                        {model.name}
-                                    </span>
-                                    <div className="flex shrink-0 items-center gap-2">
-                                        <Segmented size="small" value={model.capability} options={capabilityOptions} onChange={(value) => setCapability(model.name, value as ModelCapability)} />
-                                        <Button size="small" type={model.script ? "primary" : "default"} ghost={Boolean(model.script)} onClick={() => setScriptTarget({ name: model.name, capability: model.capability, value: model.script || "" })}>
-                                            {t(model.script ? "config.channelEditor.scriptReady" : "config.channelEditor.script")}
-                                        </Button>
-                                        <Button size="small" danger type="text" icon={<Trash2 className="size-3.5" />} onClick={() => removeModel(model.name)} />
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="px-2 py-8 text-center text-sm text-stone-500">{t("config.channelEditor.empty")}</div>
-                        )}
-                    </div>
-
-                    <ModelSelectModal open={selectOpen} channel={draft} selectedNames={draft.models.map((model) => model.name)} onConfirm={applySelection} onClose={() => setSelectOpen(false)} />
-
-                    <ModelScriptEditor
-                        open={Boolean(scriptTarget)}
-                        capability={scriptTarget?.capability || "text"}
-                        modelName={scriptTarget?.name || ""}
-                        value={scriptTarget?.value || ""}
-                        onSave={(script) => scriptTarget && setScript(scriptTarget.name, script)}
-                        onClose={() => setScriptTarget(null)}
-                    />
+                    {modelsSection}
                 </>
             )}
         </Drawer>

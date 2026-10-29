@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 import {
+    CHANNEL_SCHEMA_VERSION,
     LOCKED_CHANNEL_API_FORMAT,
     LOCKED_CHANNEL_BASE_URL,
     LOCKED_CHANNEL_ID,
@@ -39,6 +40,8 @@ export type AiConfig = {
     apiKey: string;
     apiFormat: ApiCallFormat;
     channels: ModelChannel[];
+    /** 渠道模型集合的版本号；用于站点升级默认模型时做一次性迁移，又保留用户后来自定义的结果。 */
+    channelSchemaVersion: number;
     model: string;
     imageModel: string;
     videoModel: string;
@@ -103,6 +106,7 @@ export const defaultConfig: AiConfig = {
             models: LOCKED_CHANNEL_MODELS.map((model) => ({ ...model })),
         },
     ],
+    channelSchemaVersion: CHANNEL_SCHEMA_VERSION,
     model: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_IMAGE_MODEL}`,
     imageModel: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_IMAGE_MODEL}`,
     videoModel: "",
@@ -258,17 +262,27 @@ export const useConfigStore = create<ConfigStore>()(
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
                 const config = { ...defaultConfig, ...persistedConfig };
                 // 站点锁定：无论浏览器里存的是什么渠道，都强制回到固定渠道，
-                // 只保留用户自己填写过的 API Key，避免用户把请求改到别的地址。
+                // 只保留用户自己填写过的 API Key。模型列表允许用户维护，
+                // 所以仅当历史配置没有版本号（老部署）时，才重置为默认模型。
+                const persistedChannels = Array.isArray(persistedConfig.channels) ? persistedConfig.channels : [];
+                const persistedChannel = persistedChannels.find((channel) => channel?.id === LOCKED_CHANNEL_ID);
+                const persistedModels =
+                    persistedConfig.channelSchemaVersion === CHANNEL_SCHEMA_VERSION && Array.isArray(persistedChannel?.models) ? normalizeChannelModels(persistedChannel.models) : [];
                 const lockedChannel: ModelChannel = {
                     id: LOCKED_CHANNEL_ID,
                     name: LOCKED_CHANNEL_NAME,
                     baseUrl: LOCKED_CHANNEL_BASE_URL,
                     apiFormat: LOCKED_CHANNEL_API_FORMAT,
                     apiKey: resolvePersistedApiKey(persistedConfig),
-                    models: LOCKED_CHANNEL_MODELS.map((model) => ({ ...model })),
+                    models: persistedModels.length ? persistedModels : LOCKED_CHANNEL_MODELS.map((model) => ({ ...model })),
                 };
                 const channels = [lockedChannel];
                 const models = modelOptionsFromChannels(channels);
+                // 默认模型跟随用户维护后的模型列表；旧选择失效时回退到该能力的第一个模型。
+                const firstOfCapability = (capability: ModelCapability) =>
+                    channels.flatMap((channel) => channel.models.filter((model) => model.capability === capability).map((model) => encodeChannelModel(channel.id, model.name)))[0] || "";
+                const imageModel = normalizeModelOptionValue(persistedConfig.imageModel, channels) || firstOfCapability("image");
+                const textModel = normalizeModelOptionValue(persistedConfig.textModel, channels) || firstOfCapability("text");
                 return {
                     ...current,
                     webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
@@ -279,10 +293,11 @@ export const useConfigStore = create<ConfigStore>()(
                         baseUrl: LOCKED_CHANNEL_BASE_URL,
                         apiKey: lockedChannel.apiKey,
                         channels,
+                        channelSchemaVersion: CHANNEL_SCHEMA_VERSION,
                         models,
-                        model: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_IMAGE_MODEL}`,
-                        imageModel: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_IMAGE_MODEL}`,
-                        textModel: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_TEXT_MODEL}`,
+                        model: imageModel,
+                        imageModel,
+                        textModel,
                         // 视频 / 音频能力在本部署中关闭，清空默认模型避免生成入口回退到无效模型。
                         videoModel: "",
                         audioModel: "",

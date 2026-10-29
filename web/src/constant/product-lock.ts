@@ -37,12 +37,22 @@ export const LOCKED_DEFAULT_IMAGE_MODEL = "gpt-image-2";
 export const LOCKED_DEFAULT_TEXT_MODEL = "gpt-5.6-sol";
 
 /**
+ * 渠道模型集合的版本号。
+ *
+ * 老浏览器里的配置没有这个字段，加载时会重置为上面的默认模型；用户之后自行
+ * 增删改的模型会连同该版本号一起持久化，不会被再次覆盖。
+ */
+export const CHANNEL_SCHEMA_VERSION = 1;
+
+/**
  * 功能开关。
  * 关闭的功能不仅隐藏入口，相关配置项也不会再被持久化配置覆盖回来。
  */
 export const PRODUCT_FEATURES = {
     /** 视频创作台 / 视频节点 / 视频配置。 */
     video: false,
+    /** 画布音频节点与音频相关配置。 */
+    audio: false,
     /** 画布顶栏的「配置」入口。 */
     canvasConfig: false,
     /** 渠道名称 / 协议 / 接口地址 / 模型列表是否可编辑。 */

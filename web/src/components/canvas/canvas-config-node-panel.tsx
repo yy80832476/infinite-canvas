@@ -78,15 +78,19 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                                       },
                                   ]
                                 : []),
-                            {
-                                value: "audio",
-                                label: (
-                                    <span className="inline-flex items-center gap-1">
-                                        <Music2 className="size-3.5" />
-                                        {t("canvas.configNode.audio")}
-                                    </span>
-                                ),
-                            },
+                            ...(PRODUCT_FEATURES.audio
+                                ? [
+                                      {
+                                          value: "audio",
+                                          label: (
+                                              <span className="inline-flex items-center gap-1">
+                                                  <Music2 className="size-3.5" />
+                                                  {t("canvas.configNode.audio")}
+                                              </span>
+                                          ),
+                                      },
+                                  ]
+                                : []),
                         ]}
                     />
                 </div>

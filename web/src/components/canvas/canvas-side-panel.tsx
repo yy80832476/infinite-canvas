@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { exportCanvasNodes } from "@/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { PRODUCT_FEATURES } from "@/constant/product-lock";
 import { cn } from "@/lib/utils";
 import { PromptDetailDialog } from "@/pages/prompts/components/prompt-detail-dialog";
 import { fetchSourcePrompts, type Prompt } from "@/services/api/prompts";
@@ -133,7 +134,16 @@ function TabButton({ label, active, theme, onClick }: { label: string; active: b
 // Canvas tab: list nodes and center, zoom, and select the clicked node.
 // ---------------------------------------------------------------------------
 
-const NODE_FILTER_VALUES = ["all", CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Text, CanvasNodeType.Audio, CanvasNodeType.Config, CanvasNodeType.Group];
+// 已关闭的视频 / 音频节点不再出现在筛选器中。
+const NODE_FILTER_VALUES = [
+    "all",
+    CanvasNodeType.Image,
+    ...(PRODUCT_FEATURES.video ? [CanvasNodeType.Video] : []),
+    CanvasNodeType.Text,
+    ...(PRODUCT_FEATURES.audio ? [CanvasNodeType.Audio] : []),
+    CanvasNodeType.Config,
+    CanvasNodeType.Group,
+];
 
 function nodePreviewText(node: CanvasNodeData) {
     if (node.type === CanvasNodeType.Text) return node.metadata?.content || node.metadata?.prompt || "";
