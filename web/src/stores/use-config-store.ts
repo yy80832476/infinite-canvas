@@ -4,6 +4,15 @@ import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
+import {
+    LOCKED_CHANNEL_API_FORMAT,
+    LOCKED_CHANNEL_BASE_URL,
+    LOCKED_CHANNEL_ID,
+    LOCKED_CHANNEL_MODELS,
+    LOCKED_CHANNEL_NAME,
+    LOCKED_DEFAULT_IMAGE_MODEL,
+    LOCKED_DEFAULT_TEXT_MODEL,
+} from "@/constant/product-lock";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -81,29 +90,24 @@ export const DEFAULT_LOCAL_PROXY_URL = "http://127.0.0.1:23210";
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
-    baseUrl: OPENAI_BASE_URL,
+    baseUrl: LOCKED_CHANNEL_BASE_URL,
     apiKey: "",
-    apiFormat: "openai",
+    apiFormat: LOCKED_CHANNEL_API_FORMAT,
     channels: [
         {
-            id: "default",
-            name: i18n.t("config.channels.defaultName"),
-            baseUrl: OPENAI_BASE_URL,
+            id: LOCKED_CHANNEL_ID,
+            name: LOCKED_CHANNEL_NAME,
+            baseUrl: LOCKED_CHANNEL_BASE_URL,
             apiKey: "",
-            apiFormat: "openai",
-            models: [
-                { name: "gpt-image-2", capability: "image" },
-                { name: "grok-imagine-video", capability: "video" },
-                { name: "gpt-5.5", capability: "text" },
-                { name: "gpt-4o-mini-tts", capability: "audio" },
-            ],
+            apiFormat: LOCKED_CHANNEL_API_FORMAT,
+            models: LOCKED_CHANNEL_MODELS.map((model) => ({ ...model })),
         },
     ],
-    model: "default::gpt-image-2",
-    imageModel: "default::gpt-image-2",
-    videoModel: "default::grok-imagine-video",
-    textModel: "default::gpt-5.5",
-    audioModel: "default::gpt-4o-mini-tts",
+    model: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_IMAGE_MODEL}`,
+    imageModel: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_IMAGE_MODEL}`,
+    videoModel: "",
+    textModel: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_TEXT_MODEL}`,
+    audioModel: "",
     audioVoice: "alloy",
     audioFormat: "mp3",
     audioSpeed: "1",
@@ -115,7 +119,7 @@ export const defaultConfig: AiConfig = {
     videoMode: "frames",
     systemPrompt: "",
     reasoningEffort: "auto",
-    models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
+    models: LOCKED_CHANNEL_MODELS.map((model) => encodeChannelModel(LOCKED_CHANNEL_ID, model.name)),
     quality: "auto",
     size: "1:1",
     background: "",
@@ -253,8 +257,17 @@ export const useConfigStore = create<ConfigStore>()(
                 const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
                 const config = { ...defaultConfig, ...persistedConfig };
-                if (!Array.isArray(persistedConfig.channels)) config.channels = [];
-                const channels = normalizeChannels(config);
+                // 站点锁定：无论浏览器里存的是什么渠道，都强制回到固定渠道，
+                // 只保留用户自己填写过的 API Key，避免用户把请求改到别的地址。
+                const lockedChannel: ModelChannel = {
+                    id: LOCKED_CHANNEL_ID,
+                    name: LOCKED_CHANNEL_NAME,
+                    baseUrl: LOCKED_CHANNEL_BASE_URL,
+                    apiFormat: LOCKED_CHANNEL_API_FORMAT,
+                    apiKey: resolvePersistedApiKey(persistedConfig),
+                    models: LOCKED_CHANNEL_MODELS.map((model) => ({ ...model })),
+                };
+                const channels = [lockedChannel];
                 const models = modelOptionsFromChannels(channels);
                 return {
                     ...current,
@@ -262,13 +275,17 @@ export const useConfigStore = create<ConfigStore>()(
                     config: {
                         ...config,
                         channelMode: "local",
-                        apiFormat: normalizeApiFormat(config.apiFormat),
+                        apiFormat: LOCKED_CHANNEL_API_FORMAT,
+                        baseUrl: LOCKED_CHANNEL_BASE_URL,
+                        apiKey: lockedChannel.apiKey,
                         channels,
                         models,
-                        imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
-                        videoModel: normalizeModelOptionValue(config.videoModel, channels),
-                        textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
-                        audioModel: normalizeModelOptionValue(config.audioModel || defaultConfig.audioModel, channels),
+                        model: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_IMAGE_MODEL}`,
+                        imageModel: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_IMAGE_MODEL}`,
+                        textModel: `${LOCKED_CHANNEL_ID}::${LOCKED_DEFAULT_TEXT_MODEL}`,
+                        // 视频 / 音频能力在本部署中关闭，清空默认模型避免生成入口回退到无效模型。
+                        videoModel: "",
+                        audioModel: "",
                         audioVoice: config.audioVoice || defaultConfig.audioVoice,
                         audioFormat: config.audioFormat || defaultConfig.audioFormat,
                         audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
@@ -280,7 +297,8 @@ export const useConfigStore = create<ConfigStore>()(
                         videoWatermark: config.videoWatermark || "false",
                         videoMode: config.videoMode === "reference" ? "reference" : "frames",
                         canvasImageCount: config.canvasImageCount || "3",
-                        proxyEnabled: Boolean(config.proxyEnabled),
+                        // 同源反代已解决跨域，本地代理不再开放。
+                        proxyEnabled: false,
                         proxyUrl: config.proxyUrl || DEFAULT_LOCAL_PROXY_URL,
                         nodeRegenerateBehavior: config.nodeRegenerateBehavior === "overwrite" ? "overwrite" : "new-node",
                         autoFocusOnSelect: Boolean(config.autoFocusOnSelect),
@@ -444,6 +462,13 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
         apiKey: channel.apiKey,
         apiFormat: channel.apiFormat,
     };
+}
+
+/** 从浏览器历史配置中取出用户填过的 API Key；锁定渠道只迁移密钥，其余一律以站点配置为准。 */
+function resolvePersistedApiKey(persistedConfig: Partial<AiConfig>) {
+    const channels = Array.isArray(persistedConfig.channels) ? persistedConfig.channels : [];
+    const fromChannel = channels.map((channel) => channel?.apiKey?.trim()).find(Boolean);
+    return fromChannel || persistedConfig.apiKey?.trim() || "";
 }
 
 function normalizeChannels(config: AiConfig) {

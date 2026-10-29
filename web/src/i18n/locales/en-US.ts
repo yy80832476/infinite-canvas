@@ -490,6 +490,11 @@ export default {
             defaultName: "Default provider",
             newName: "New provider",
             indexedName: "Provider {{index}}",
+            lockedDescription: "Provider name, protocol, API endpoint and models are fixed by the site. Only your API key can be changed.",
+            apiKeyConfigured: "API key configured",
+            apiKeyMissing: "API key required before generating",
+            editApiKey: "Edit API key",
+            setApiKey: "Set API key",
         },
         preferences: {
             interface: "Interface",
@@ -521,6 +526,7 @@ export default {
         },
         channelEditor: {
             title: "Edit provider",
+            lockedTitle: "Provider credentials",
             name: "Provider name",
             protocol: "Protocol",
             baseUrl: "API endpoint",

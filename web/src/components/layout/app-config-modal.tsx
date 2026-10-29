@@ -1,22 +1,18 @@
 import { App, Button, Form, Input, Modal, Progress, Radio, Select, Switch, Tabs } from "antd";
 import type { TFunction } from "i18next";
-import { Cloud, Download, Pencil, Plus, RefreshCw, Trash2, Upload, Wifi } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Cloud, Pencil, RefreshCw, Wifi } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ModelPicker } from "@/components/model-picker";
-import { videoResolutionOptions } from "@/components/video-settings-panel";
 import { ChannelEditorDrawer } from "@/components/layout/channel-editor-drawer";
-import { ConfigLocalProxy } from "@/components/layout/config-local-proxy";
-import { ConfigPromptSources } from "@/components/layout/config-prompt-sources";
 import { ConfigLocalStorage } from "@/components/layout/config-local-storage";
 import type { AppLocale } from "@/i18n";
-import { exportAppConfig, importAppConfig } from "@/services/config-file";
 import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
 import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
-import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaScaleOptions, parseVideoResolution } from "@/lib/media-size";
-import { createModelChannel, modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaScaleOptions } from "@/lib/media-size";
+import { modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
 
 type ModelGroup = {
     capability: ModelCapability;
@@ -31,14 +27,15 @@ type WebdavDomainProgress = {
     status?: "active" | "success" | "exception";
 };
 
+// 本部署关闭视频功能，默认模型只保留生图 / 文本。
 const modelGroups: ModelGroup[] = [
     { capability: "image", modelKey: "imageModel", labelKey: "config.preferences.defaultImageModel" },
-    { capability: "video", modelKey: "videoModel", labelKey: "config.preferences.defaultVideoModel" },
     { capability: "text", modelKey: "textModel", labelKey: "config.preferences.defaultTextModel" },
     { capability: "audio", modelKey: "audioModel", labelKey: "config.preferences.defaultAudioModel" },
 ];
 
-const webdavDomainKeys: AppSyncDomainKey[] = ["canvas", "assets", "image-workbench", "video-workbench"];
+// WebDAV 同步范围不再包含已下线的视频工作台。
+const webdavDomainKeys: AppSyncDomainKey[] = ["canvas", "assets", "image-workbench"];
 function createWebdavDomainProgress(): Record<AppSyncDomainKey, WebdavDomainProgress> {
     return webdavDomainKeys.reduce(
         (progress, key) => ({
@@ -52,7 +49,6 @@ function createWebdavDomainProgress(): Record<AppSyncDomainKey, WebdavDomainProg
 export function AppConfigPanel({ showDoneButton = false, initialTab = "channels" }: { showDoneButton?: boolean; initialTab?: ConfigTabKey }) {
     const { message } = App.useApp();
     const { i18n, t } = useTranslation();
-    const configInputRef = useRef<HTMLInputElement>(null);
     const [activeTab, setActiveTab] = useState<ConfigTabKey>(initialTab);
     const [editingChannelId, setEditingChannelId] = useState("");
     const [testingWebdav, setTestingWebdav] = useState(false);
@@ -84,32 +80,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
         clearPromptContinue();
     };
 
-    const loadConfigFile = async (file: File) => {
-        try {
-            await importAppConfig(file);
-            message.success(t("config.imported"));
-        } catch (error) {
-            message.error(error instanceof Error ? error.message : t("config.importFailed"));
-        } finally {
-            if (configInputRef.current) configInputRef.current.value = "";
-        }
-    };
-
     const updateChannels = (channels: ModelChannel[]) => saveConfig(withChannels(config, channels));
-
-    const addChannel = () => {
-        const channel = createModelChannel({ name: t("config.channels.numberedName", { count: config.channels.length + 1 }) });
-        updateChannels([...config.channels, channel]);
-        setEditingChannelId(channel.id);
-    };
-
-    const deleteChannel = (id: string) => {
-        if (config.channels.length <= 1) {
-            message.warning(t("config.channels.keepOne"));
-            return;
-        }
-        updateChannels(config.channels.filter((channel) => channel.id !== id));
-    };
 
     const saveChannel = (channel: ModelChannel) => {
         updateChannels(config.channels.map((item) => (item.id === channel.id ? channel : item)));
@@ -167,18 +138,6 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
 
     return (
         <>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 pb-3 dark:border-stone-800">
-                <div className="text-xs text-stone-500">{t("config.fileSecurity")}</div>
-                <div className="flex gap-2">
-                    <Button icon={<Upload className="size-4" />} onClick={() => configInputRef.current?.click()}>
-                        {t("config.import")}
-                    </Button>
-                    <Button icon={<Download className="size-4" />} onClick={exportAppConfig}>
-                        {t("config.export")}
-                    </Button>
-                    <input ref={configInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => event.target.files?.[0] && void loadConfigFile(event.target.files[0])} />
-                </div>
-            </div>
             <Tabs
                 activeKey={activeTab}
                 onChange={(key) => setActiveTab(key as ConfigTabKey)}
@@ -188,12 +147,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         label: t("config.tabs.channels"),
                         children: (
                             <div>
-                                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                                    <div className="text-xs text-stone-500">{t("config.channels.description")}</div>
-                                    <Button type="primary" icon={<Plus className="size-4" />} onClick={addChannel}>
-                                        {t("config.channels.add")}
-                                    </Button>
-                                </div>
+                                <div className="mb-4 text-xs text-stone-500">{t("config.channels.lockedDescription")}</div>
                                 <div className="space-y-2">
                                     {config.channels.map((channel) => (
                                         <div key={channel.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
@@ -202,23 +156,16 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                 <div className="mt-1 truncate text-xs text-stone-500">
                                                     {apiFormatLabel(channel.apiFormat)} · {t("config.channels.modelCount", { count: channel.models.length })} · {channel.baseUrl || t("config.channels.missingUrl")}
                                                 </div>
+                                                <div className="mt-1 text-xs text-stone-500">{t(channel.apiKey.trim() ? "config.channels.apiKeyConfigured" : "config.channels.apiKeyMissing")}</div>
                                             </div>
-                                            <div className="flex shrink-0 gap-2">
-                                                <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => setEditingChannelId(channel.id)}>
-                                                    {t("common.edit")}
-                                                </Button>
-                                                <Button size="small" danger icon={<Trash2 className="size-3.5" />} onClick={() => deleteChannel(channel.id)} />
-                                            </div>
+                                            <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => setEditingChannelId(channel.id)}>
+                                                {t(channel.apiKey.trim() ? "config.channels.editApiKey" : "config.channels.setApiKey")}
+                                            </Button>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         ),
-                    },
-                    {
-                        key: "local-proxy",
-                        label: t("config.tabs.localProxy"),
-                        children: <ConfigLocalProxy />,
                     },
                     {
                         key: "preferences",
@@ -247,9 +194,6 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                     </Form.Item>
                                     <Form.Item label={t("config.preferences.imageResolution")} className="mb-4">
                                         <Select value={inferMediaScale(config.size)} options={imageResolutionOptions} onChange={(scale) => updateConfig("size", computeMediaSize(scale, inferMediaRatio(config.size)))} />
-                                    </Form.Item>
-                                    <Form.Item label={t("config.preferences.videoResolution")} className="mb-4">
-                                        <Select value={parseVideoResolution(config.vquality)} options={videoResolutionOptions} onChange={(value) => updateConfig("vquality", value)} />
                                     </Form.Item>
                                     <Form.Item label={t("config.preferences.audioVoice")} className="mb-4">
                                         <Select value={config.audioVoice} options={audioVoiceOptions} onChange={(value) => updateConfig("audioVoice", value)} />
@@ -295,11 +239,6 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                 </Form.Item>
                             </Form>
                         ),
-                    },
-                    {
-                        key: "prompt-sources",
-                        label: t("config.tabs.promptSources"),
-                        children: <ConfigPromptSources />,
                     },
                     {
                         key: "webdav",

@@ -490,6 +490,11 @@ export default {
             defaultName: "默认渠道",
             newName: "新渠道",
             indexedName: "渠道 {{index}}",
+            lockedDescription: "渠道名称、协议、接口地址和模型由站点统一配置，不可修改；只需填写你的 API Key。",
+            apiKeyConfigured: "API Key 已填写",
+            apiKeyMissing: "尚未填写 API Key，填写后才能生成",
+            editApiKey: "修改 API Key",
+            setApiKey: "填写 API Key",
         },
         preferences: {
             interface: "界面偏好",
@@ -521,6 +526,7 @@ export default {
         },
         channelEditor: {
             title: "编辑渠道",
+            lockedTitle: "渠道密钥",
             name: "渠道名称",
             protocol: "协议",
             baseUrl: "接口地址",

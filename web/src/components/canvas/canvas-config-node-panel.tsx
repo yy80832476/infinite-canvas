@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { PRODUCT_FEATURES } from "@/constant/product-lock";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
@@ -64,15 +65,19 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                                     </span>
                                 ),
                             },
-                            {
-                                value: "video",
-                                label: (
-                                    <span className="inline-flex items-center gap-1">
-                                        <Video className="size-3.5" />
-                                        {t("canvas.configNode.video")}
-                                    </span>
-                                ),
-                            },
+                            ...(PRODUCT_FEATURES.video
+                                ? [
+                                      {
+                                          value: "video",
+                                          label: (
+                                              <span className="inline-flex items-center gap-1">
+                                                  <Video className="size-3.5" />
+                                                  {t("canvas.configNode.video")}
+                                              </span>
+                                          ),
+                                      },
+                                  ]
+                                : []),
                             {
                                 value: "audio",
                                 label: (

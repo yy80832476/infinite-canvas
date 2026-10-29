@@ -11,7 +11,8 @@ type ThemeStore = {
 export const useThemeStore = create<ThemeStore>()(
     persist(
         (set) => ({
-            theme: "dark",
+            // 站点默认浅色主题；用户仍可通过右上角切换。
+            theme: "light",
             setTheme: (theme) => set({ theme }),
         }),
         { name: "infinite-canvas:theme_store" },
